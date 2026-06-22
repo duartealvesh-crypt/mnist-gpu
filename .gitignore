@@ -1,0 +1,23 @@
+# Build artifacts
+ann
+test
+*.o
+*.obj
+*.exe
+
+# Profiling output
+gmon.out
+*.prof
+
+# MNIST dataset (downloaded separately, see README.md)
+*.idx3-ubyte
+*.idx1-ubyte
+*.gz
+data/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
