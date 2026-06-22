@@ -1,13 +1,11 @@
-# CUDA MNIST Classifier
+# Custom CUDA MLP: Low-Level GPU Memory Optimization
 
-> A 784–30–10 MLP for MNIST with forward/backprop written as **hand-rolled CUDA
-> kernels** — no cuBLAS, no framework. Built for a GPU programming course at
-> Centrale Nantes and run on a **Jetson Nano**.
+[![CUDA Version](https://img.shields.io/badge/CUDA-11.x%20%7C%2012.x-green.svg)](https://developer.nvidia.com/cuda-zone)
+[![Hardware](https://img.shields.io/badge/Target-NVIDIA%20Jetson%20Nano-76B900.svg)](https://www.nvidia.com/en-us/autonomous-machines/embedded-systems/jetson-nano/)
 
-The network is deliberately simple. The interesting part is the **iterative GPU
-memory optimization**: each step was profiled with `nvprof`, and the dominant
-matmul kernel went from **1.74 ms → 333 µs per call** by changing *how* memory
-moves between host and device — not the math.
+> **A bare-metal 784–30–10 MLP for MNIST written in raw CUDA C++ (no cuBLAS, no frameworks). Focused on migrating a sequential CPU baseline to the GPU, eliminating the PCIe bottleneck, and optimizing Device memory access layout.**
+
+The network is deliberately simple. The interesting part is the **iterative GPU memory optimization**: starting from a pure sequential CPU implementation, each GPU migration step was profiled with `nvprof`, and the dominant matmul kernel went from **1.74 ms → 333 µs per call** by changing *how* memory moves between host and device — not the math.
 
 ## Performance journey
 
@@ -19,7 +17,7 @@ time throughout), so it's the metric tracked here.
 |---|---|---|---|---|
 | ① | GPU `cudaMalloc` + HtoD/DtoH copy **on every call** | 1.74 ms | host⇄device transfers | GPU as slow as CPU (~48 s) |
 | ② | Unified (managed) memory | 1.97 ms | managed-memory sync | simpler code, still transfer-bound |
-| ③ | **All ops on GPU**, weights resident — but still one CPU→GPU upload per epoch | 611 µs | residual per-epoch transfer | big drop |
+| ③ | **All ops on GPU**, weights resident — but still one CPU→GPU upload per loop | 611 µs | residual per-epoch transfer | big drop |
 | ④ | **Fully GPU-resident**: no host round-trip once the network is instantiated | **333 µs** | matmul kernel | matmul total 23.7 s → 12.9 s |
 
 **Starting point (CPU baseline, gprof on an Intel i5-1355U):** `matrix_dot`
@@ -47,7 +45,7 @@ Input (784 = 28×28) → Hidden (30) → Output (10)
 ```
 
 - **Optimizer:** plain minibatch SGD, `alpha = 0.05`, batch size 16 (`main.cu`).
-- **Weight init:** Gaussian (Box-Muller), scaled by `1/sqrt(fan_in)`.
+- **Weight init:** Gaussian (Box-Muller), scaled by $$\frac{1}{\sqrt{\text{fan\_in}}}$$.
 - **Memory model:** each `matrix_t` holds a host pointer (`m`) and a device
   pointer (`m_gpu`). All per-layer scratch buffers are allocated **once** at
   network creation (`create_layer`), so the training loop does zero `cudaMalloc`.
@@ -58,6 +56,8 @@ Input (784 = 28×28) → Hidden (30) → Output (10)
   check during development).
 
 Every CUDA Runtime call is wrapped in `CHECK_ERROR` (`err.h`).
+
+- **Kernel Implementation:** To isolate the impact of memory management, the `matrix_dot` kernel currently uses a straightforward 2D grid/block mapping (one thread per element) without advanced hardware-level optimizations like shared memory tiling. Due to course time constraints, further micro-optimization of the compute kernels was left as future work, as eliminating the Host-Device transfer bottleneck already yielded the primary 81% performance leap.
 
 ## Repository layout
 
