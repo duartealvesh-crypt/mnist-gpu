@@ -132,6 +132,34 @@ inside the GPU kernels themselves. To profile the kernels, use
 `nvprof`/Nsight Systems or Nsight Compute on a machine with the corresponding
 NVIDIA tools installed.
 
+#### Profiling the GPU kernels on Colab
+
+Colab's CUDA image ships with `nvprof`, `nsys` (Nsight Systems), and `ncu`
+(Nsight Compute) preinstalled, so kernel-level profiling works out of the box
+on the free T4 runtime:
+
+```bash
+!make ARCH=sm_75                # T4 is Turing, compute capability 7.5
+
+# Legacy, simplest: per-kernel time/call counts, straight to stdout.
+# nvprof is deprecated from Volta/Turing onward (removed entirely on
+# Ampere+), but still works on the T4.
+!nvprof ./ann
+
+# Recommended: timeline of kernels + memcpys, download the .nsys-rep
+# and open it in the (free) Nsight Systems desktop app.
+!nsys profile -o ann_profile ./ann
+!nsys stats ann_profile.nsys-rep
+
+# Per-kernel metrics (occupancy, memory throughput, ...).
+!ncu --kernel-name matrix_dot_kernel ./ann
+```
+
+Add `-lineinfo` to `NVCCFLAGS` (`make ARCH=sm_75 NVCCFLAGS="-O3 -arch=sm_75 -lineinfo -lm"`)
+to get source-line correlation in the Nsight reports. None of this needs
+extra `cudaDeviceSynchronize()` calls in the code — these tools hook into the
+CUDA driver directly, unlike host-side wall-clock timing.
+
 ## Jetson Nano deployment
 
 Developed and run on an **NVIDIA Jetson Nano** (Maxwell GPU, 128 CUDA cores,
