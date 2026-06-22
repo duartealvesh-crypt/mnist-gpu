@@ -31,7 +31,12 @@ in the first place.
 network fully GPU-resident — weights and activations stay on the device, and
 after instantiation the training loop never copies back to the host — so kernels
 chain with no round-trips. The kernel code barely changed; *where the memory
-lives* did.
+lives* did. More than the speedup, that's the lesson that stuck: on a GPU,
+performance is a memory problem before it's a math one — and watching it play out
+first-hand is what finally made frameworks like PyTorch click.
+
+**Same code on a Turing T4 (Colab, sm_75):** with no changes, `matrix_dot` drops
+to **40 µs/call** (1.56 s total) — ~8× faster than the Jetson's Maxwell GPU.
 
 ## How it works
 
@@ -48,9 +53,9 @@ Input (784 = 28×28) → Hidden (30) → Output (10)
   network creation (`create_layer`), so the training loop does zero `cudaMalloc`.
   Inputs/labels are copied to the GPU once per minibatch; `forward`/`backward`
   then chain kernel launches entirely on device memory (`ann.cu`).
-- **Correctness check:** with this minimal config the model reaches ~60% test
-  accuracy after a single epoch — the author's threshold for "the kernels are
-  correct."
+- **Correctness:** one epoch is enough to confirm the kernels are right — see
+  the measured accuracy above (78.52%, well past the ~60% floor used as a sanity
+  check during development).
 
 Every CUDA Runtime call is wrapped in `CHECK_ERROR` (`err.h`).
 
