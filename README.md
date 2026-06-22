@@ -45,7 +45,7 @@ Input (784 = 28×28) → Hidden (30) → Output (10)
 ```
 
 - **Optimizer:** plain minibatch SGD, `alpha = 0.05`, batch size 16 (`main.cu`).
-- **Weight init:** Gaussian (Box-Muller), scaled by $$\frac{1}{\sqrt{\text{fan\_in}}}$$.
+- **Weight init:** Gaussian (Box-Muller), scaled by $$\frac{1}{\sqrt{\text{fan-in}}}$$.
 - **Memory model:** each `matrix_t` holds a host pointer (`m`) and a device
   pointer (`m_gpu`). All per-layer scratch buffers are allocated **once** at
   network creation (`create_layer`), so the training loop does zero `cudaMalloc`.
