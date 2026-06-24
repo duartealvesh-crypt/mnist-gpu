@@ -7,7 +7,7 @@
 
 #include "mnist.h"
 #include "matrix.h"
-#include "ann.h"
+#include "ann_cpp.h"
 
 void populate_minibatch(double *x, double* y, unsigned* minibatch_idx, unsigned minibatch_size, image * img, unsigned img_size, byte* label, unsigned label_size);
 
