@@ -9,8 +9,8 @@
 #include <stdint.h>
 
 double normalRand(double mu, double sigma);
-void init_weight(matrix_t* w, unsigned nneurones_prev);
-void print_layer(layer_t *layer);
+void init_weight(Matrix& w, unsigned nneurones_prev);
+
 
 
 // Standard Box-Muller transform: draws one sample from N(mu, sigma^2).

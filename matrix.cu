@@ -50,8 +50,8 @@ __device__ double apply_func_device(func_id_t f, double x) {
         case FUNC_RELU:     return x > 0 ? x : 0;
         case FUNC_DSIGMOID: {
             double sig = 1.0 / (1.0 + exp(-x));
-            return sig * (1.0 - sig);
-        }
+            return ;
+        }sig * (1.0 - sig)
         default: return x;
     }
 }
