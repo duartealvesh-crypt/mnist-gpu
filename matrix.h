@@ -51,6 +51,17 @@ public:
     Matrix transpose() const;                               // matrix_transpose_gpu
     Matrix scale(double s) const;                           // matrix_scalar_gpu
 
+    // In-place GPU operations: write the result into this matrix's existing
+    // buffer (no allocation). Used on the hot path (forward/backward) to keep
+    // the training loop free of cudaMalloc/cudaFree.
+    void set_sum(const Matrix& a, const Matrix& b);       // this <- a + b
+    void set_sub(const Matrix& a, const Matrix& b);       // this <- a - b
+    void set_hadamard(const Matrix& a, const Matrix& b);  // this <- a o b
+    void set_scale(const Matrix& a, double s);            // this <- a * s
+    void set_apply(const Matrix& a, func_id_t f);         // this <- f(a)
+    void set_dot(const Matrix& a, const Matrix& b);       // this <- a . b (matmul)
+    void set_transpose(const Matrix& a);                  // this <- a^T
+
     // Core Getters for custom Kernel/Layer interaction
     double* gpu_ptr() const { return d_m_gpu; }
     double* cpu_ptr() const { return h_m; }

@@ -205,6 +205,62 @@ Matrix Matrix::scale(double s) const {
     return res;
 }
 
+// ============================================================================
+// --- IN-PLACE GPU OPERATIONS (write into *this, no allocation) ---
+// These reuse a pre-allocated destination buffer, so the training loop performs
+// zero cudaMalloc/cudaFree. They are the hot-path counterparts of the operators
+// above (which return a fresh Matrix and are kept for readability/tests).
+// ============================================================================
+
+void Matrix::set_sum(const Matrix& a, const Matrix& b) {
+    assert(rows == a.rows && columns == a.columns && rows == b.rows && columns == b.columns);
+    int size = rows * columns;
+    int gridDim = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+    matrix_sum_kernel<<<gridDim, THREADS_PER_BLOCK>>>(a.d_m_gpu, b.d_m_gpu, d_m_gpu, size);
+}
+
+void Matrix::set_sub(const Matrix& a, const Matrix& b) {
+    assert(rows == a.rows && columns == a.columns && rows == b.rows && columns == b.columns);
+    int size = rows * columns;
+    int gridDim = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+    matrix_minus_kernel<<<gridDim, THREADS_PER_BLOCK>>>(a.d_m_gpu, b.d_m_gpu, d_m_gpu, size);
+}
+
+void Matrix::set_hadamard(const Matrix& a, const Matrix& b) {
+    assert(rows == a.rows && columns == a.columns && rows == b.rows && columns == b.columns);
+    int size = rows * columns;
+    int gridDim = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+    matrix_hadamard_kernel<<<gridDim, THREADS_PER_BLOCK>>>(a.d_m_gpu, b.d_m_gpu, d_m_gpu, size);
+}
+
+void Matrix::set_scale(const Matrix& a, double s) {
+    assert(rows == a.rows && columns == a.columns);
+    int size = rows * columns;
+    int gridDim = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+    matrix_scalar_kernel<<<gridDim, THREADS_PER_BLOCK>>>(a.d_m_gpu, s, d_m_gpu, size);
+}
+
+void Matrix::set_apply(const Matrix& a, func_id_t f) {
+    assert(rows == a.rows && columns == a.columns);
+    int size = rows * columns;
+    int gridDim = (size + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+    matrix_function_kernel<<<gridDim, THREADS_PER_BLOCK>>>(a.d_m_gpu, f, d_m_gpu, size);
+}
+
+void Matrix::set_dot(const Matrix& a, const Matrix& b) {
+    assert(a.columns == b.rows && rows == a.rows && columns == b.columns);
+    dim3 blockDim(16, 16);
+    dim3 gridDim((a.rows + blockDim.x - 1) / blockDim.x, (b.columns + blockDim.y - 1) / blockDim.y);
+    matrix_dot_kernel<<<gridDim, blockDim>>>(a.d_m_gpu, b.d_m_gpu, d_m_gpu, a.rows, a.columns, b.columns);
+}
+
+void Matrix::set_transpose(const Matrix& a) {
+    assert(rows == a.columns && columns == a.rows);
+    dim3 blockDim(16, 16);
+    dim3 gridDim((a.rows + blockDim.x - 1) / blockDim.x, (a.columns + blockDim.y - 1) / blockDim.y);
+    matrix_transpose_kernel<<<gridDim, blockDim>>>(a.d_m_gpu, d_m_gpu, a.rows, a.columns);
+}
+
 void Matrix::print(bool is_short) const {
     unsigned lim_rows = is_short ? std::min(rows, 4u) : rows;
     unsigned lim_col = is_short ? std::min(columns, 10u) : columns;

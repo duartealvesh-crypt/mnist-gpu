@@ -86,51 +86,59 @@ void Ann::set_input(Matrix& input)
     layers[0].activations.copy_from(input);
 }
 
+// Forward and backward write straight into each layer's pre-allocated scratch
+// matrices (set_* methods), so the whole training loop does zero cudaMalloc.
+
 void Ann::forward(func_id_t activation_type)
 {
     for (unsigned l = 1; l < number_of_layers; ++l) {
         Layer& cur  = layers[l];
         Layer& prev = layers[l - 1];
 
-        cur.z1_tmp      = cur.weights * prev.activations;        // z1 = W^l x a^(l-1)
-        cur.z2_tmp      = cur.biases * cur.one_row;              // z2 = b^l x [1,...,1]
-        cur.z           = cur.z1_tmp + cur.z2_tmp;              // z^l = z1 + z2
-        cur.activations = cur.z.apply_function(activation_type); // a^l = sigmoid(z^l)
+        cur.z1_tmp.set_dot(cur.weights, prev.activations); // z1 = W^l . a^(l-1)
+        cur.z2_tmp.set_dot(cur.biases, cur.one_row);       // z2 = b^l . [1,...,1]
+        cur.z.set_sum(cur.z1_tmp, cur.z2_tmp);             // z^l = z1 + z2
+        cur.activations.set_apply(cur.z, activation_type); // a^l = sigmoid(z^l)
     }
 }
 
 void Ann::backward(Matrix& y, func_id_t d_activation_type)
 {
     unsigned L = number_of_layers - 1;
+    Layer& out = layers[L];
 
-    // Output layer delta: (a^L - y) o f'(z^L)
-    layers[L].delta = layers[L].activations - y;
-    layers[L].dfz   = layers[L].z.apply_function(d_activation_type);
-    layers[L].delta = layers[L].delta.hadamard(layers[L].dfz);
+    // Output-layer delta = (a^L - y) o f'(z^L).
+    // z1_tmp (same shape as z) is reused here as scratch for f'(z^L) — it's free
+    // once the forward pass is done.
+    out.delta.set_sub(out.activations, y);
+    out.z1_tmp.set_apply(out.z, d_activation_type);
+    out.delta.set_hadamard(out.delta, out.z1_tmp);
 
     // Propagate the delta back through the hidden layers.
     for (unsigned l = L; l > 1; --l) {
         Layer& cur  = layers[l];
         Layer& prev = layers[l - 1];
 
-        cur.tw        = cur.weights.transpose();                  // (W^l)^T
-        cur.delta_tmp = cur.tw * cur.delta;                       // (W^l)^T x delta^l
-        prev.dfz      = prev.z.apply_function(d_activation_type); // f'(z^(l-1))
-        prev.delta    = cur.delta_tmp.hadamard(prev.dfz);         // delta^(l-1)
+        cur.tw.set_transpose(cur.weights);               // (W^l)^T
+        cur.delta_tmp.set_dot(cur.tw, cur.delta);        // (W^l)^T . delta^l
+        cur.dfz.set_apply(prev.z, d_activation_type);    // f'(z^(l-1))   [shape (n_{l-1}, m)]
+        prev.delta.set_hadamard(cur.delta_tmp, cur.dfz); // delta^(l-1)
     }
 
-    // Apply the gradients: W <- W - (alpha/m) * delta x a^T,  b <- b - (alpha/m) * delta x 1
+    // Apply the gradients: W <- W - (alpha/m) . delta . a^T,  b <- b - (alpha/m) . delta . 1
     double lr = alpha / minibatch_size;
     for (unsigned l = 1; l < number_of_layers; ++l) {
         Layer& cur  = layers[l];
         Layer& prev = layers[l - 1];
 
-        cur.ta      = prev.activations.transpose();        // (a^(l-1))^T
-        cur.w1      = cur.delta * cur.ta;                  // delta^l x (a^(l-1))^T
-        cur.weights = cur.weights - cur.w1.scale(lr);      // weight update
+        cur.ta.set_transpose(prev.activations);   // (a^(l-1))^T
+        cur.w1.set_dot(cur.delta, cur.ta);        // delta^l . (a^(l-1))^T
+        cur.w1.set_scale(cur.w1, lr);             // (alpha/m) . gradient
+        cur.weights.set_sub(cur.weights, cur.w1); // weight update
 
-        cur.b1      = cur.delta * cur.one_col;             // delta^l summed over the batch
-        cur.biases  = cur.biases - cur.b1.scale(lr);       // bias update
+        cur.b1.set_dot(cur.delta, cur.one_col);   // delta^l summed over the batch
+        cur.b1.set_scale(cur.b1, lr);
+        cur.biases.set_sub(cur.biases, cur.b1);   // bias update
     }
 }
 
