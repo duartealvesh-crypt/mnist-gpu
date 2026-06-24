@@ -1,83 +1,61 @@
 #ifndef MATRIX_H
 #define MATRIX_H
-#include <stdlib.h>
-#include <stdio.h>
-#include <assert.h>
-#include <stdbool.h>
 
-typedef struct
-{
-    double * m;
-    unsigned columns;
+#include <cuda_runtime.h>
+#include <iostream>
+
+// Enum matching your original design for activation functions
+enum func_id_t {
+    FUNC_ADDITION,
+    FUNC_SIGMOID,
+    FUNC_RELU,
+    FUNC_DSIGMOID
+};
+
+class Matrix {
+private:
     unsigned rows;
-    double * m_gpu;
-}  matrix_t;
+    unsigned columns;
+    double* h_m;     // Host Pointer
+    double* d_m_gpu; // Device Pointer
 
-// matrix.h
-typedef enum { FUNC_ADDITION, FUNC_SIGMOID, FUNC_RELU, FUNC_DSIGMOID } func_id_t;
+public:
+    // Lifecycle Management (RAII)
+    Matrix(unsigned r, unsigned c);
+    ~Matrix();
 
-matrix_t * alloc_matrix(unsigned rows, unsigned columns);
+    // Prevent dangerous shallow copies (Double Free Vulnerability)
+    Matrix(const Matrix&) = delete;
+    Matrix& operator=(const Matrix&) = delete;
 
-void destroy_matrix(matrix_t *m);
+    // Enable high-performance move semantics
+    Matrix(Matrix&& other) noexcept;
+    Matrix& operator=(Matrix&& other) noexcept;
 
-void print_matrix(matrix_t *m, bool is_short);
+    // Synchronizations
+    void CPU_to_GPU();
+    void GPU_to_CPU();
+    void print(bool is_short = true) const;
 
-void hadamard_product(matrix_t *m1, matrix_t *m2, matrix_t *res);
+    // High-Performance Utility Operators
+    double& operator()(unsigned r, unsigned c) { return h_m[r * columns + c]; }
+    const double& operator()(unsigned r, unsigned c) const { return h_m[r * columns + c]; }
+    void copy_from(const Matrix& src); // Replaces matrix_memcpy
 
-void matrix_sum(matrix_t *m1, matrix_t *m2, matrix_t *res);
+    // Encapsulated Mathematical GPU Interfaces
+    Matrix operator+(const Matrix& other) const;            // matrix_sum_gpu
+    Matrix operator-(const Matrix& other) const;            // matrix_minus_gpu
+    Matrix operator*(const Matrix& other) const;            // matrix_dot_gpu (Matrix Multiplication)
+    Matrix hadamard(const Matrix& other) const;             // matrix_hadamard_gpu
+    Matrix apply_function(func_id_t f) const;               // matrix_function_gpu
+    Matrix transpose() const;                               // matrix_transpose_gpu
+    Matrix scale(double s) const;                           // matrix_scalar_gpu
 
-void matrix_minus(matrix_t *m1, matrix_t *m2, matrix_t *res);
-
-void matrix_dot(matrix_t *m1, matrix_t *m2, matrix_t *res);
-
-void matrix_CPU_to_GPU(matrix_t * m);
-
-void matrix_GPU_to_CPU(matrix_t * m);
-
-__global__
-void matrix_dot_kernel(double *m1, double *m2, double *res, unsigned m1_rows,unsigned m1_columns, unsigned m2_columns);
-
-__global__
-void matrix_sum_kernel(double *m1, double *m2, double *res);
-
-
-void matrix_sum_gpu(matrix_t *m1, matrix_t *m2, matrix_t *res);
-
-__global__
-void matrix_hadamard_kernel(double *m1, double *m2, double *res);
-
-__global__
-void matrix_minus_kernel(double *m1, double *m2, double *res);
-
-void matrix_dot_gpu(matrix_t *m1, matrix_t *m2, matrix_t *res);
-
-void matrix_hadamard_gpu(matrix_t *m1, matrix_t *m2, matrix_t *res);
-
-void matrix_minus_gpu(matrix_t *m1, matrix_t *m2, matrix_t *res);
-
-matrix_t * alloc_matrix_gpu(matrix_t * res, unsigned columns, unsigned rows);
-
-void matrix_function(matrix_t *m1, double (*f)(double), matrix_t *res);
-
-__global__
-void matrix_function_kernel(double *m1, func_id_t f, double *res, int size);
-
-void matrix_function_gpu(matrix_t *m1, func_id_t f, matrix_t *res);
-
-void matrix_transpose_gpu(matrix_t *m1, matrix_t *res);
-
-__global__
-void matrix_transpose_kernel(double *m1, double *res, unsigned rows, unsigned cols);
-
-void matrix_scalar_gpu(matrix_t *m1, double s, matrix_t *res);
-
-__global__
-void matrix_scalar_kernel(double *m1, double s, double *res);
-
-void matrix_transpose(matrix_t *m1, matrix_t *res);
-
-void matrix_scalar(matrix_t *m1, double s, matrix_t *res);
-
-void matrix_memcpy(matrix_t *dest, const matrix_t *src);
+    // Core Getters for custom Kernel/Layer interaction
+    double* gpu_ptr() const { return d_m_gpu; }
+    double* cpu_ptr() const { return h_m; }
+    unsigned get_rows() const { return rows; }
+    unsigned get_cols() const { return columns; }
+};
 
 #endif
