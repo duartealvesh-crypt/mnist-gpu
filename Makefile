@@ -8,17 +8,17 @@ ARCH ?= sm_53
 
 NVCCFLAGS = -O3 -arch=$(ARCH) -lm
 
-ANN_SRCS = main.cu ann.cu matrix.cu mnist.cu
+ANN_SRCS = main.cu ann_cpp.cu matrix.cu mnist.cu
 TEST_SRCS = test.cu matrix.cu
 
 .PHONY: all clean profile
 
 all: ann
 
-ann: $(ANN_SRCS) ann.h matrix.h mnist.h err.h
+ann: $(ANN_SRCS) ann_cpp.h matrix.h mnist.h
 	$(NVCC) $(NVCCFLAGS) -o $@ $(ANN_SRCS)
 
-test: $(TEST_SRCS) matrix.h err.h
+test: $(TEST_SRCS) matrix.h
 	$(NVCC) $(NVCCFLAGS) -o $@ $(TEST_SRCS)
 
 # Host-side profiling with gprof (CUDA kernels themselves are not covered by
